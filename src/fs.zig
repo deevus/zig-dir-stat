@@ -24,6 +24,43 @@ pub fn getFileSize(allocator: Allocator, path: anytype) !usize {
 
             return @as(usize, find_data.nFileSizeHigh) << 32 | @as(usize, find_data.nFileSizeLow);
         },
+        .macos => {
+            const xattr = @cImport({
+                @cInclude("sys/xattr.h");
+            });
+
+            const file_path = try std.fs.path.joinZ(allocator, path);
+            defer allocator.free(file_path);
+
+            var buf: [256]u8 = undefined;
+            const len = xattr.getxattr(file_path.ptr, "com.apple.cloudkit.share", &buf, buf.len, 0, 0);
+
+            if (len != -1) {
+                return error.InvalidHandle;
+            }
+
+            var stat: std.c.Stat = undefined;
+            _ = std.c.stat(file_path.ptr, &stat);
+
+            if (stat.size < 0) {
+                return error.InvalidHandle;
+            }
+
+            return @intCast(stat.size);
+        },
+        .linux => {
+            const file_path = try std.fs.path.joinZ(allocator, path);
+            defer allocator.free(file_path);
+
+            var stat: std.c.Stat = undefined;
+            _ = std.c.stat(file_path.ptr, &stat);
+
+            if (stat.size < 0) {
+                return error.InvalidHandle;
+            }
+
+            return @intCast(stat.size);
+        },
         else => {
             const file_path = try std.fs.path.join(allocator, path);
             defer allocator.free(file_path);
