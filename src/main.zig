@@ -66,12 +66,21 @@ fn start() !void {
 
     var total_size = std.atomic.Value(usize).init(0);
 
+    var progress = std.Progress.start(.{
+        .root_name = "Processing files and folders",
+    });
+    defer progress.end();
+
+    const root_path = try std.fs.path.resolve(arena.allocator(), &[_][]const u8{config.path});
+
     var root_context = DirTaskContext{
-        .dir_path = config.path,
+        .root_path = root_path,
+        .dir_path = root_path,
         .total_size = &total_size,
         .allocator = allocator,
         .wait_group = &wait_group,
         .thread_pool = &thread_pool,
+        .progress = &progress,
     };
 
     wait_group.start();
@@ -88,11 +97,13 @@ fn start() !void {
 }
 
 const DirTaskContext = struct {
+    root_path: []const u8,
     dir_path: []const u8,
     total_size: *std.atomic.Value(usize),
     allocator: Allocator,
     wait_group: *WaitGroup,
     thread_pool: *ThreadPool,
+    progress: *std.Progress.Node,
 
     pub fn forSubPath(self: @This(), sub_path: []const u8) !DirTaskContext {
         const dir_path = try std.fs.path.join(self.allocator, &[_][]const u8{
@@ -101,11 +112,13 @@ const DirTaskContext = struct {
         });
 
         return DirTaskContext{
+            .root_path = self.root_path,
             .dir_path = dir_path,
             .total_size = self.total_size,
             .allocator = self.allocator,
             .wait_group = self.wait_group,
             .thread_pool = self.thread_pool,
+            .progress = self.progress,
         };
     }
 };
@@ -126,16 +139,24 @@ fn readDirAllAlloc(allocator: Allocator, path: []const u8) !std.ArrayList(std.fs
 
     var it = dir.iterate();
     while (try it.next()) |entry| {
-        try entries.append(.{
-            .kind = entry.kind,
-            .name = try allocator.dupe(u8, entry.name),
-        });
+        switch (entry.kind) {
+            .file, .directory => {
+                try entries.append(.{
+                    .kind = entry.kind,
+                    .name = try allocator.dupe(u8, entry.name),
+                });
+            },
+            else => continue,
+        }
     }
 
     return entries;
 }
 
 fn processDirectoryTask(context: DirTaskContext) void {
+    var progress_node = context.progress.start(context.dir_path[context.root_path.len..], 0);
+    defer progress_node.end();
+
     defer context.wait_group.finish();
 
     const allocator = context.allocator;
@@ -151,6 +172,8 @@ fn processDirectoryTask(context: DirTaskContext) void {
         entries.deinit();
     }
 
+    progress_node.setEstimatedTotalItems(entries.items.len);
+
     var dir_size: usize = 0;
     for (entries.items) |entry| {
         if (entry.kind == .directory) {
@@ -165,6 +188,8 @@ fn processDirectoryTask(context: DirTaskContext) void {
 
             dir_size += file_size;
         }
+
+        progress_node.completeOne();
     }
 
     // Update the total size atomically
