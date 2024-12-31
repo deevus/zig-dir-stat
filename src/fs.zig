@@ -11,11 +11,14 @@ pub fn getFileSize(allocator: Allocator, path: anytype) !usize {
             const file_path = try std.fs.path.joinZ(allocator, path);
             defer allocator.free(file_path);
 
-            const file_path_utf16 = try unicode.utf8ToUtf16LeAllocZ(allocator, file_path);
-            defer allocator.free(file_path_utf16);
+            var buf: [1024]u16 = undefined;
+            @memset(&buf, 0);
+
+            const len = try unicode.utf8ToUtf16Le(&buf, file_path);
+            const file_path_utf16 = buf[0..len];
 
             var find_data: windows.WIN32_FIND_DATAW = undefined;
-            const handle = windows.kernel32.FindFirstFileW(file_path_utf16.ptr, &find_data);
+            const handle = windows.kernel32.FindFirstFileW(@ptrCast(file_path_utf16.ptr), &find_data);
             defer _ = windows.kernel32.FindClose(handle);
 
             if (handle == windows.INVALID_HANDLE_VALUE) {
