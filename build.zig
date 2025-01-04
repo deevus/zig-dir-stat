@@ -84,9 +84,17 @@ pub fn build(b: *std.Build) void {
     const lib_jdz_allocator = b.dependency("jdz_allocator", .{});
     const mod_jdz_allocator = lib_jdz_allocator.module("jdz_allocator");
 
+    const lib_tree = b.dependency("tree", .{});
+    const mod_tree = lib_tree.builder.addModule("tree", .{
+        .root_source_file = lib_tree.builder.path("tree.zig"),
+    });
+
     exe.root_module.addImport("cli", mod_cli);
     exe_unit_tests.root_module.addImport("cli", mod_cli);
 
     exe.root_module.addImport("jdz_allocator", mod_jdz_allocator);
     exe_unit_tests.root_module.addImport("jdz_allocator", mod_jdz_allocator);
+
+    exe.root_module.addImport("tree", mod_tree);
+    exe_unit_tests.root_module.addImport("tree", mod_tree);
 }

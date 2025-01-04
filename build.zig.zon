@@ -31,6 +31,10 @@
             .url = "git+https://github.com/joadnacer/jdz_allocator#fefa1851875adfcb0e2bf6534c9d04e304be093f",
             .hash = "12205cc579d7cd5d7419014d984c23fc0a410decc43176d87a4545189d7f1f69622d",
         },
+        .tree = .{
+            .url = "git+https://github.com/deevus/zig-tree.git#32560849eabeda2d5cb5d524c4d9310783373c2b",
+            .hash = "1220b41b1f118b90188517f05a17a0ea4017b33c8392faac7b997cae54ae960a4b56",
+        },
     },
     .paths = .{
         "build.zig",

@@ -2,7 +2,15 @@ const std = @import("std");
 const cli = @import("cli");
 const fmt = @import("fmt.zig");
 const fs = @import("fs.zig");
+const tree = @import("tree");
 
+const PathData = struct {
+    path: []const u8,
+    size: usize,
+};
+
+const Tree = tree.Tree(PathData);
+const Node = Tree.Node;
 const ThreadPool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
 const Allocator = std.mem.Allocator;
@@ -73,6 +81,11 @@ fn start() !void {
 
     const root_path = try std.fs.path.resolve(arena.allocator(), &[_][]const u8{config.path});
 
+    var file_tree = Tree.init(.{
+        .path = root_path,
+        .size = 0,
+    });
+
     var root_context = DirTaskContext{
         .root_path = root_path,
         .dir_path = root_path,
@@ -81,6 +94,8 @@ fn start() !void {
         .wait_group = &wait_group,
         .thread_pool = &thread_pool,
         .progress = &progress,
+        .tree = &file_tree,
+        .current_node = &file_tree.root,
     };
 
     wait_group.start();
@@ -94,6 +109,11 @@ fn start() !void {
     const total_size_human = try fmt.formatBytes(allocator, total_size_bytes);
 
     try std_out_writer.print("Total size: {s} ({d} bytes)\n", .{ total_size_human, total_size_bytes });
+
+    var iter = file_tree.depthFirstIterator();
+    while (iter.next()) |node| {
+        std.debug.print("path: {s}, size: {s}\n", .{ node.value.path, try fmt.formatBytes(allocator, node.value.size) });
+    }
 }
 
 const DirTaskContext = struct {
@@ -104,12 +124,21 @@ const DirTaskContext = struct {
     wait_group: *WaitGroup,
     thread_pool: *ThreadPool,
     progress: *std.Progress.Node,
+    tree: *Tree,
+    current_node: *Node,
 
     pub fn forSubPath(self: @This(), sub_path: []const u8) !DirTaskContext {
         const dir_path = try std.fs.path.join(self.allocator, &[_][]const u8{
             self.dir_path,
             sub_path,
         });
+
+        const new_node = try self.tree.createNode(.{
+            .path = dir_path,
+            .size = 0,
+        }, @constCast(&self.allocator));
+
+        self.tree.insert(new_node, self.current_node);
 
         return DirTaskContext{
             .root_path = self.root_path,
@@ -119,6 +148,8 @@ const DirTaskContext = struct {
             .wait_group = self.wait_group,
             .thread_pool = self.thread_pool,
             .progress = self.progress,
+            .tree = self.tree,
+            .current_node = new_node,
         };
     }
 };
@@ -191,6 +222,8 @@ fn processDirectoryTask(context: DirTaskContext) void {
 
         progress_node.completeOne();
     }
+
+    context.current_node.value.size = dir_size;
 
     // Update the total size atomically
     _ = total_size.fetchAdd(dir_size, .monotonic);
