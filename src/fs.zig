@@ -5,13 +5,15 @@ const unicode = std.unicode;
 
 const Allocator = std.mem.Allocator;
 
+const MAX_FILE_LENGTH = 4096;
+
 pub fn getFileSize(allocator: Allocator, path: anytype) !usize {
     switch (builtin.os.tag) {
         .windows => {
             const file_path = try std.fs.path.joinZ(allocator, path);
             defer allocator.free(file_path);
 
-            var buf: [1024]u16 = undefined;
+            var buf: [MAX_FILE_LENGTH]u16 = undefined;
             @memset(&buf, 0);
 
             const len = try unicode.utf8ToUtf16Le(&buf, file_path);
@@ -35,7 +37,7 @@ pub fn getFileSize(allocator: Allocator, path: anytype) !usize {
             const file_path = try std.fs.path.joinZ(allocator, path);
             defer allocator.free(file_path);
 
-            var buf: [256]u8 = undefined;
+            var buf: [MAX_FILE_LENGTH]u8 = undefined;
             const len = xattr.getxattr(file_path.ptr, "com.apple.cloudkit.share", &buf, buf.len, 0, 0);
 
             if (len != -1) {

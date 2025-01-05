@@ -35,6 +35,14 @@
             .url = "git+https://github.com/deevus/zig-tree.git#32560849eabeda2d5cb5d524c4d9310783373c2b",
             .hash = "1220b41b1f118b90188517f05a17a0ea4017b33c8392faac7b997cae54ae960a4b56",
         },
+        .squarified = .{
+            .url = "git+https://github.com/deevus/zig-squarified.git#746bdd7d6f31a41b29da9dca6c3e4abe6189de3f",
+            .hash = "1220f3835816110947931e356b8e4f089a00e599380d703c6ab8b1c4c116b7eef475",
+        },
+        .@"raylib-zig" = .{
+            .url = "git+https://github.com/Not-Nik/raylib-zig?ref=devel#57041e707c06360808c9026f41c968c914e5415c",
+            .hash = "1220fef1b089185bea1d40b5997ae82ed6e84732b815edfc1e39ce2173aaca3310b2",
+        },
     },
     .paths = .{
         "build.zig",

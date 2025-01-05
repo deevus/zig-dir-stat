@@ -2,24 +2,26 @@ const std = @import("std");
 const cli = @import("cli");
 const fmt = @import("fmt.zig");
 const fs = @import("fs.zig");
-const tree = @import("tree");
+const squarified = @import("squarified");
+const rl = @import("raylib");
 
-const PathData = struct {
-    path: []const u8,
-    size: usize,
-};
-
-const Tree = tree.Tree(PathData);
-const Node = Tree.Node;
+const PathData = [:0]const u8;
+const Squarify = squarified.Squarify(PathData);
+const Node = squarified.Node(PathData);
+const Tree = squarified.Tree(PathData);
+const Rect = squarified.Rect;
 const ThreadPool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ThreadSafeAllocator = std.heap.ThreadSafeAllocator;
+const Mutex = std.Thread.Mutex;
 
 var config = struct {
     path: []const u8 = ".",
 }{};
+
+var mutex = Mutex{};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -72,30 +74,30 @@ fn start() !void {
     var wait_group: WaitGroup = undefined;
     wait_group.reset();
 
-    var total_size = std.atomic.Value(usize).init(0);
-
     var progress = std.Progress.start(.{
         .root_name = "Processing files and folders",
     });
     defer progress.end();
 
     const root_path = try std.fs.path.resolve(arena.allocator(), &[_][]const u8{config.path});
+    const root_path_z = try arena.allocator().dupeZ(u8, root_path);
 
-    var file_tree = Tree.init(.{
-        .path = root_path,
-        .size = 0,
-    });
+    var root_node = Node{
+        .data = root_path_z,
+        .value = 0,
+    };
 
-    var root_context = DirTaskContext{
+    var file_tree = Tree.init(allocator, &root_node);
+
+    const root_context = DirTaskContext{
         .root_path = root_path,
         .dir_path = root_path,
-        .total_size = &total_size,
         .allocator = allocator,
         .wait_group = &wait_group,
         .thread_pool = &thread_pool,
         .progress = &progress,
         .tree = &file_tree,
-        .current_node = &file_tree.root,
+        .current_node = &root_node,
     };
 
     wait_group.start();
@@ -105,21 +107,59 @@ fn start() !void {
     var std_out = std.io.getStdOut();
     var std_out_writer = std_out.writer().any();
 
-    const total_size_bytes = root_context.total_size.load(.acquire);
+    const total_size_bytes: usize = @intFromFloat(addUpSizes(&root_node));
     const total_size_human = try fmt.formatBytes(allocator, total_size_bytes);
 
     try std_out_writer.print("Total size: {s} ({d} bytes)\n", .{ total_size_human, total_size_bytes });
 
-    var iter = file_tree.depthFirstIterator();
-    while (iter.next()) |node| {
-        std.debug.print("path: {s}, size: {s}\n", .{ node.value.path, try fmt.formatBytes(allocator, node.value.size) });
+    var sq = Squarify.init(arena.allocator());
+
+    const window = Rect{
+        .width = 1920,
+        .height = 1080,
+        .x = 0,
+        .y = 0,
+    };
+
+    const res = (try sq.squarify(window, &root_node)).?;
+
+    rl.initWindow(window.width, window.height, "");
+    defer rl.closeWindow();
+
+    while (!rl.windowShouldClose()) {
+        rl.beginDrawing();
+        defer rl.endDrawing();
+
+        rl.clearBackground(rl.Color.white);
+
+        for (res.items) |result| {
+            const rect = rl.Rectangle{
+                .width = result.rect.width,
+                .height = result.rect.height,
+                .x = result.rect.x,
+                .y = result.rect.y,
+            };
+
+            rl.drawRectangleRec(rect, rl.Color.green);
+            rl.drawRectangleLinesEx(rect, 2.0, rl.Color.black);
+        }
     }
+}
+
+fn addUpSizes(node: *Node) f32 {
+    var total_size: f32 = 0;
+
+    if (node.children) |children| for (children) |child| {
+        total_size += addUpSizes(child);
+    };
+
+    node.value += total_size;
+    return node.value;
 }
 
 const DirTaskContext = struct {
     root_path: []const u8,
     dir_path: []const u8,
-    total_size: *std.atomic.Value(usize),
     allocator: Allocator,
     wait_group: *WaitGroup,
     thread_pool: *ThreadPool,
@@ -128,22 +168,20 @@ const DirTaskContext = struct {
     current_node: *Node,
 
     pub fn forSubPath(self: @This(), sub_path: []const u8) !DirTaskContext {
-        const dir_path = try std.fs.path.join(self.allocator, &[_][]const u8{
+        const dir_path = try std.fs.path.joinZ(self.allocator, &[_][]const u8{
             self.dir_path,
             sub_path,
         });
 
-        const new_node = try self.tree.createNode(.{
-            .path = dir_path,
-            .size = 0,
-        }, @constCast(&self.allocator));
+        mutex.lock();
+        errdefer mutex.unlock();
 
-        self.tree.insert(new_node, self.current_node);
+        const new_node = try self.tree.addNode(self.current_node, 0, dir_path);
+        mutex.unlock();
 
         return DirTaskContext{
             .root_path = self.root_path,
             .dir_path = dir_path,
-            .total_size = self.total_size,
             .allocator = self.allocator,
             .wait_group = self.wait_group,
             .thread_pool = self.thread_pool,
@@ -191,7 +229,6 @@ fn processDirectoryTask(context: DirTaskContext) void {
     defer context.wait_group.finish();
 
     const allocator = context.allocator;
-    var total_size = context.total_size;
     const dir_path = context.dir_path;
 
     var entries = readDirAllAlloc(allocator, dir_path) catch return;
@@ -223,8 +260,5 @@ fn processDirectoryTask(context: DirTaskContext) void {
         progress_node.completeOne();
     }
 
-    context.current_node.value.size = dir_size;
-
-    // Update the total size atomically
-    _ = total_size.fetchAdd(dir_size, .monotonic);
+    context.current_node.value = @floatFromInt(dir_size);
 }

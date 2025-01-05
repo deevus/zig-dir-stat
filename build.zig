@@ -81,20 +81,37 @@ pub fn build(b: *std.Build) void {
     const lib_cli = b.dependency("zig-cli", .{});
     const mod_cli = lib_cli.module("zig-cli");
 
+    exe.root_module.addImport("cli", mod_cli);
+    exe_unit_tests.root_module.addImport("cli", mod_cli);
+
     const lib_jdz_allocator = b.dependency("jdz_allocator", .{});
     const mod_jdz_allocator = lib_jdz_allocator.module("jdz_allocator");
+
+    exe.root_module.addImport("jdz_allocator", mod_jdz_allocator);
+    exe_unit_tests.root_module.addImport("jdz_allocator", mod_jdz_allocator);
 
     const lib_tree = b.dependency("tree", .{});
     const mod_tree = lib_tree.builder.addModule("tree", .{
         .root_source_file = lib_tree.builder.path("tree.zig"),
     });
 
-    exe.root_module.addImport("cli", mod_cli);
-    exe_unit_tests.root_module.addImport("cli", mod_cli);
-
-    exe.root_module.addImport("jdz_allocator", mod_jdz_allocator);
-    exe_unit_tests.root_module.addImport("jdz_allocator", mod_jdz_allocator);
-
     exe.root_module.addImport("tree", mod_tree);
     exe_unit_tests.root_module.addImport("tree", mod_tree);
+
+    const lib_squarified = b.dependency("squarified", .{});
+    const mod_squarified = lib_squarified.module("squarified");
+
+    exe.root_module.addImport("squarified", mod_squarified);
+    exe_unit_tests.root_module.addImport("squarified", mod_squarified);
+
+    const raylib_dep = b.dependency("raylib-zig", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const raylib = raylib_dep.module("raylib"); // main raylib module
+    const raylib_artifact = raylib_dep.artifact("raylib"); // raylib C library
+
+    exe.linkLibrary(raylib_artifact);
+    exe.root_module.addImport("raylib", raylib);
 }
