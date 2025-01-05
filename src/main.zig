@@ -112,14 +112,16 @@ fn start() !void {
 
     try std_out_writer.print("Total size: {s} ({d} bytes)\n", .{ total_size_human, total_size_bytes });
 
-    var sq = Squarify.init(arena.allocator());
-
     const window = Rect{
         .width = 1920,
         .height = 1080,
         .x = 0,
         .y = 0,
     };
+
+    var sq = Squarify.init(arena.allocator(), .{
+        .minimum_area = window.area() * 0.0001,
+    });
 
     const res = (try sq.squarify(window, &root_node)).?;
 

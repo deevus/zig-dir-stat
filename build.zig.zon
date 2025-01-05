@@ -36,8 +36,8 @@
             .hash = "1220b41b1f118b90188517f05a17a0ea4017b33c8392faac7b997cae54ae960a4b56",
         },
         .squarified = .{
-            .url = "git+https://github.com/deevus/zig-squarified.git#746bdd7d6f31a41b29da9dca6c3e4abe6189de3f",
-            .hash = "1220f3835816110947931e356b8e4f089a00e599380d703c6ab8b1c4c116b7eef475",
+            .url = "git+https://github.com/deevus/zig-squarified.git#dea9f3d9933ab3727a6e46f5daab22b11b55bd83",
+            .hash = "12203d473a5dae3b6a265037a273227e74941f38cf34ae500cbad35f6d844a82ca47",
         },
         .@"raylib-zig" = .{
             .url = "git+https://github.com/Not-Nik/raylib-zig?ref=devel#57041e707c06360808c9026f41c968c914e5415c",
